@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Socket.IO chat</title>
+  <link rel="stylesheet" href="/styles/css/style.css">
+
+</head>
+
+<body>
+  <div id="container">
+    <div id="chat">
+      <div id="nickname-banner"></div>
+      <ul id="messages"></ul>
+      <div id="typing"></div>
+      <form id="form" action="">
+        <input id="input" autocomplete="off" /><button>Send</button>
+      </form>
+    </div>
+
+    <div id="sidebar">
+      <h3>Online</h3>
+      <ul id="users"></ul>
+      <p style="font-size: 0.75rem; margin-top: 0.75rem;">
+        Tip: use <code>/w username message</code> for private messages.
+      </p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // --- Nickname ---
+    const nickname =
+      prompt("Choose a nickname:") ||
+      "User-" + Math.floor(Math.random() * 1000);
+    socket.emit("set nickname", nickname);
+    document.getElementById("nickname-banner").textContent =
+      "You are logged in as: " + nickname;
+
+    const messages = document.getElementById("messages");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const typingDiv = document.getElementById("typing");
+    const usersList = document.getElementById("users");
+
+    function appendMessage(type, text) {
+      const item = document.createElement("li");
+      item.textContent = text;
+      if (type) {
+        item.classList.add(type);
+      }
+      messages.appendChild(item);
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+
+    // --- Form submit ---
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      // Private message: /w username message
+      if (text.startsWith("/w ")) {
+        const parts = text.split(" ");
+        const to = parts[1];
+        const msg = parts.slice(2).join(" ");
+        if (to && msg) {
+          socket.emit("private message", { to, msg });
+          appendMessage("me", `(whisper to ${to}) ${msg}`);
+        }
+      } else {
+        // Normal chat
+        socket.emit("chat message", text);
+        appendMessage("me", `${nickname}: ${text}`);
+      }
+
+      input.value = "";
+    });
+
+    // --- Incoming messages from others ---
+    socket.on("chat message", ({ nickname, msg }) => {
+      appendMessage("other", `${nickname}: ${msg}`);
+    });
+
+    socket.on("system message", (text) => {
+      appendMessage("system", text);
+    });
+
+    // --- Typing indicator ---
+    let typingTimeout;
+    input.addEventListener("input", () => {
+      socket.emit("typing");
+    });
+
+    socket.on("typing", (name) => {
+      typingDiv.textContent = `${name} is typing...`;
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        typingDiv.textContent = "";
+      }, 1000);
+    });
+
+    // --- Online users list ---
+    socket.on("user list", (users) => {
+      usersList.innerHTML = "";
+      users.forEach((u) => {
+        const li = document.createElement("li");
+        li.textContent = u;
+        usersList.appendChild(li);
+      });
+    });
+
+    // --- Private messages ---
+    socket.on("private message", ({ from, msg }) => {
+      appendMessage("private", `(whisper from ${from}) ${msg}`);
+    });
+  </script>
+</body>
+
+</html>
